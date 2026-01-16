@@ -28,12 +28,12 @@ app.use(corsConfig);
 app.use(cacheControl);
 
 /*
-    CAUTION: 
+    CAUTION:
     Having the "ANIWATCH_API_HOSTNAME" env will
     enable rate limitting for the deployment.
     WARNING:
     If you are using any serverless environment, you must set the
-    "ANIWATCH_API_DEPLOYMENT_ENV" to that environment's name, 
+    "ANIWATCH_API_DEPLOYMENT_ENV" to that environment's name,
     otherwise you may face issues.
 */
 const isPersonalDeployment = Boolean(env.ANIWATCH_API_HOSTNAME);
@@ -48,8 +48,14 @@ app.use("/", serveStatic({ root: "public" }));
 app.get("/health", (c) => c.text("daijoubu", { status: 200 }));
 app.get("/v", async (c) =>
     c.text(
-        `aniwatch-api: v${"version" in pkgJson && pkgJson?.version ? pkgJson.version : "-1"}\n` +
-            `aniwatch-package: v${"dependencies" in pkgJson && pkgJson?.dependencies?.aniwatch ? pkgJson?.dependencies?.aniwatch : "-1"}`
+        `aniwatch-api: v${
+            "version" in pkgJson && pkgJson?.version ? pkgJson.version : "-1"
+        }\n` +
+        `aniwatch-package: v${
+            "dependencies" in pkgJson && pkgJson?.dependencies?.aniwatch
+                ? pkgJson?.dependencies?.aniwatch
+                : "-1"
+        }`
     )
 );
 
@@ -66,22 +72,26 @@ app.onError(errorHandler);
 //
 (function () {
     /*
-        NOTE:
-        "ANIWATCH_API_DEPLOYMENT_MODE" env must be set to
-        its supported name for serverless deployments
-        Eg: "vercel" for vercel deployments
-    */
+          NOTE:
+          "ANIWATCH_API_DEPLOYMENT_MODE" env must be set to
+          its supported name for serverless deployments
+          Eg: "vercel" for vercel deployments
+      */
     if (SERVERLESS_ENVIRONMENTS.includes(env.ANIWATCH_API_DEPLOYMENT_ENV)) {
         return;
     }
 
+    // ✅ Render-compatible port selection:
+    // Render provides process.env.PORT; fallback to ANIWATCH_API_PORT; then 4000.
+    const port = Number(process.env.PORT) || Number(env.ANIWATCH_API_PORT) || 4000;
+
     const server = serve({
-        port: env.ANIWATCH_API_PORT,
+        port,
+        // If your @hono/node-server version supports it, you can uncomment this:
+        // hostname: "0.0.0.0",
         fetch: app.fetch,
     }).addListener("listening", () =>
-        log.info(
-            `aniwatch-api RUNNING at http://localhost:${env.ANIWATCH_API_PORT}`
-        )
+        log.info(`aniwatch-api RUNNING at http://0.0.0.0:${port}`)
     );
 
     process.on("SIGINT", () => execGracefulShutdown(server));
@@ -92,25 +102,24 @@ app.onError(errorHandler);
     });
     process.on("unhandledRejection", (reason, promise) => {
         log.error(
-            `Unhandled Rejection at: ${promise}, reason: ${reason instanceof Error ? reason.message : reason}`
+            `Unhandled Rejection at: ${promise}, reason: ${
+                reason instanceof Error ? reason.message : reason
+            }`
         );
         execGracefulShutdown(server);
     });
 
     /*
-        CAUTION:
-        The `if` below block is for `render free deployments` only,
-        as their free tier has an approx 10 or 15 minute sleep time.
-        This is to keep the server awake and prevent it from sleeping.
-        You can enable the automatic health check by setting the
-        environment variables "ANIWATCH_API_HOSTNAME" to your deployment's hostname,
-        and "ANIWATCH_API_DEPLOYMENT_ENV" to "render" in your environment variables.
-        If you are not using render, you can remove the below `if` block.
-    */
-    if (
-        isPersonalDeployment &&
-        env.ANIWATCH_API_DEPLOYMENT_ENV === DeploymentEnv.RENDER
-    ) {
+          CAUTION:
+          The `if` below block is for `render free deployments` only,
+          as their free tier has an approx 10 or 15 minute sleep time.
+          This is to keep the server awake and prevent it from sleeping.
+          You can enable the automatic health check by setting the
+          environment variables "ANIWATCH_API_HOSTNAME" to your deployment's hostname,
+          and "ANIWATCH_API_DEPLOYMENT_ENV" to "render" in your environment variables.
+          If you are not using render, you can remove the below `if` block.
+      */
+    if (isPersonalDeployment && env.ANIWATCH_API_DEPLOYMENT_ENV === DeploymentEnv.RENDER) {
         const INTERVAL_DELAY = 8 * 60 * 1000; // 8mins
         const url = new URL(`https://${env.ANIWATCH_API_HOSTNAME}/health`);
 
@@ -119,14 +128,10 @@ app.onError(errorHandler);
             https
                 .get(url.href)
                 .on("response", () => {
-                    log.info(
-                        `aniwatch-api HEALTH_CHECK at ${new Date().toISOString()}`
-                    );
+                    log.info(`aniwatch-api HEALTH_CHECK at ${new Date().toISOString()}`);
                 })
                 .on("error", (err) =>
-                    log.warn(
-                        `aniwatch-api HEALTH_CHECK failed; ${err.message.trim()}`
-                    )
+                    log.warn(`aniwatch-api HEALTH_CHECK failed; ${err.message.trim()}`)
                 );
         }, INTERVAL_DELAY);
     }
